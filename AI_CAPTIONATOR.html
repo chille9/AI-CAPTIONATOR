@@ -1,0 +1,439 @@
+<!--
+Copyright (c) 2025 Chille
+Made by chille9@github
+License: Apache-2.0
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ImgCaption Studio</title>
+    <!-- JSZip for bulk downloading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-bg: #1e1e1e;
+            --accent: #3b82f6;
+            --accent-hover: #2563eb;
+            --text-main: #e5e7eb;
+            --text-muted: #9ca3af;
+            --border: #333;
+            --danger: #ef4444;
+        }
+
+        * { box-sizing: border-box; outline: none; }
+
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Inter, system-ui, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header / Toolbar */
+        header {
+            background-color: var(--card-bg);
+            padding: 1rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-bottom: 1px solid var(--border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+        }
+
+        h1 { margin: 0; font-size: 1.25rem; font-weight: 600; letter-spacing: -0.025em; }
+
+        .toolbar { display: flex; gap: 10px; }
+
+        button {
+            cursor: pointer;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            border: none;
+            font-weight: 500;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn-primary { background-color: var(--accent); color: white; }
+        .btn-primary:hover { background-color: var(--accent-hover); }
+        
+        .btn-secondary { background-color: #333; color: var(--text-main); }
+        .btn-secondary:hover { background-color: #444; }
+
+        .btn-danger { background-color: transparent; color: var(--danger); border: 1px solid var(--danger); }
+        .btn-danger:hover { background-color: var(--danger); color: white; }
+
+        /* Main Content */
+        #drop-zone {
+            flex: 1;
+            padding: 2rem;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        /* Drag & Drop Overlay */
+        #drop-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(59, 130, 246, 0.1);
+            border: 2px dashed var(--accent);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5rem;
+            color: var(--accent);
+            pointer-events: none;
+            z-index: 50;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            margin-top: 10vh;
+            color: var(--text-muted);
+        }
+
+        /* Image Card */
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.2s;
+        }
+
+        .card:hover { border-color: #555; }
+
+        .card-img-wrapper {
+            height: 200px;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .card-img-wrapper img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        .card-body {
+            padding: 1rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .file-name {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        textarea {
+            width: 100%;
+            background-color: #121212;
+            border: 1px solid var(--border);
+            color: var(--text-main);
+            border-radius: 6px;
+            padding: 0.75rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+            font-size: 0.9rem;
+        }
+
+        textarea:focus { border-color: var(--accent); }
+
+        .card-actions {
+            display: flex;
+            justify-content: space-between;
+            margin-top: auto;
+        }
+
+        .save-toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--accent);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .show-toast { opacity: 1; }
+
+        /* Loading indicator */
+        #loader {
+            display: none;
+            position: fixed;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 8px;
+            z-index: 100;
+        }
+
+        /* Hidden inputs */
+        input[type="file"] { display: none; }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>Captionator</h1>
+    <div class="toolbar">
+        <button class="btn-secondary" onclick="document.getElementById('fileInput').click()">+ Add Images</button>
+        <button class="btn-secondary" onclick="document.getElementById('folderInput').click()">+ Load Folder</button>
+        <button class="btn-primary" onclick="downloadAllZip()">Save All (.zip)</button>
+    </div>
+</header>
+
+<!-- Hidden Inputs -->
+<input type="file" id="fileInput" multiple>
+<!-- webkitdirectory allows selecting a folder -->
+<input type="file" id="folderInput" webkitdirectory directory multiple>
+
+<div id="drop-zone">
+    <div id="drop-overlay">Drop images/folders here</div>
+    
+    <div id="empty-state" class="empty-state">
+        <h2>No images loaded</h2>
+        <p>Load a folder containing images and corresponding .txt files.</p>
+    </div>
+
+    <div id="grid-container" class="grid"></div>
+</div>
+
+<div id="toast" class="save-toast">File Saved!</div>
+<div id="loader">Processing files...</div>
+
+<script>
+    const grid = document.getElementById('grid-container');
+    const emptyState = document.getElementById('empty-state');
+    const dropZone = document.getElementById('drop-zone');
+    const dropOverlay = document.getElementById('drop-overlay');
+    const toast = document.getElementById('toast');
+    const loader = document.getElementById('loader');
+
+    // Store image data
+    let images = []; 
+
+    // Event Listeners for File Inputs
+    document.getElementById('fileInput').addEventListener('change', (e) => handleFiles(e.target.files));
+    document.getElementById('folderInput').addEventListener('change', (e) => handleFiles(e.target.files));
+
+    // Drag and Drop Logic
+    window.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dropOverlay.style.display = 'flex';
+    });
+
+    window.addEventListener('dragleave', (e) => {
+        if (e.target === dropOverlay) {
+            dropOverlay.style.display = 'none';
+        }
+    });
+
+    window.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dropOverlay.style.display = 'none';
+        handleFiles(e.dataTransfer.files);
+    });
+
+    // Helper: Get filename without extension
+    function getBaseName(fileName) {
+        return fileName.substring(0, fileName.lastIndexOf('.'));
+    }
+
+    // Main File Handler (Async)
+    async function handleFiles(fileList) {
+        if (!fileList.length) return;
+        
+        loader.style.display = 'block';
+        emptyState.style.display = 'none';
+
+        const files = Array.from(fileList);
+        
+        // 1. Filter files
+        const imageFiles = files.filter(f => f.type.startsWith('image/'));
+        const textFiles = files.filter(f => f.name.endsWith('.txt'));
+
+        // 2. Read all text files into a Map first
+        // Map Key: filename without extension, Value: file content
+        const captionsMap = {};
+
+        const textPromises = textFiles.map(file => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const baseName = getBaseName(file.name);
+                    captionsMap[baseName] = e.target.result;
+                    resolve();
+                };
+                reader.readAsText(file);
+            });
+        });
+
+        // Wait for all text files to be read
+        await Promise.all(textPromises);
+
+        // 3. Process Images and match with captions
+        imageFiles.forEach(file => {
+            // Create unique ID
+            const id = Date.now() + Math.random().toString(36).substr(2, 9);
+            const url = URL.createObjectURL(file);
+            const baseName = getBaseName(file.name);
+
+            // Check if we found a matching text file
+            const matchedCaption = captionsMap[baseName] || "";
+
+            const imgObj = {
+                id: id,
+                file: file,
+                name: file.name,
+                url: url,
+                caption: matchedCaption // Pre-fill caption
+            };
+
+            images.push(imgObj);
+            renderCard(imgObj);
+        });
+
+        loader.style.display = 'none';
+    }
+
+    // Render a single card
+    function renderCard(imgObj) {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.id = `card-${imgObj.id}`;
+
+        card.innerHTML = `
+            <div class="card-img-wrapper">
+                <img src="${imgObj.url}" alt="${imgObj.name}">
+            </div>
+            <div class="card-body">
+                <div class="file-name" title="${imgObj.name}">${imgObj.name}</div>
+                <textarea 
+                    placeholder="Write caption here..." 
+                    oninput="updateCaption('${imgObj.id}', this.value)"
+                >${imgObj.caption}</textarea>
+                <div class="card-actions">
+                    <button class="btn-secondary" style="font-size:0.8rem; padding: 0.4rem 0.8rem;" onclick="saveSingle('${imgObj.id}')">
+                        💾 Save .txt
+                    </button>
+                    <button class="btn-danger" style="font-size:0.8rem; padding: 0.4rem 0.8rem;" onclick="removeImage('${imgObj.id}')">
+                        Remove
+                    </button>
+                </div>
+            </div>
+        `;
+
+        grid.appendChild(card);
+    }
+
+    // Update State on Typing
+    window.updateCaption = (id, text) => {
+        const img = images.find(i => i.id === id);
+        if (img) img.caption = text;
+    };
+
+    // Remove Image
+    window.removeImage = (id) => {
+        const index = images.findIndex(i => i.id === id);
+        if (index > -1) {
+            URL.revokeObjectURL(images[index].url);
+            images.splice(index, 1);
+            
+            const card = document.getElementById(`card-${id}`);
+            if (card) card.remove();
+
+            if (images.length === 0) {
+                emptyState.style.display = 'block';
+            }
+        }
+    };
+
+    // Helper: Get txt filename from image filename
+    function getTxtFileName(imageName) {
+        return imageName.substring(0, imageName.lastIndexOf('.')) + ".txt";
+    }
+
+    // Save Single Text File
+    window.saveSingle = (id) => {
+        const img = images.find(i => i.id === id);
+        if (!img) return;
+
+        const blob = new Blob([img.caption], { type: "text/plain;charset=utf-8" });
+        saveAs(blob, getTxtFileName(img.name));
+        
+        showToast(`Saved ${getTxtFileName(img.name)}`);
+    };
+
+    // Save All as ZIP
+    window.downloadAllZip = () => {
+        if (images.length === 0) return alert("No images to save.");
+
+        const zip = new JSZip();
+        let count = 0;
+
+        images.forEach(img => {
+            const txtName = getTxtFileName(img.name);
+            zip.file(txtName, img.caption);
+            count++;
+        });
+
+        zip.generateAsync({ type: "blob" }).then(function(content) {
+            saveAs(content, "captions_archive.zip");
+            showToast(`Downloaded ${count} captions`);
+        });
+    };
+
+    // Show Notification
+    function showToast(msg) {
+        toast.textContent = msg;
+        toast.classList.add('show-toast');
+        setTimeout(() => {
+            toast.classList.remove('show-toast');
+        }, 2000);
+    }
+</script>
+
+</body>
+</html>
+<!--
+Copyright (c) 2025 Chille
+Made by chille9@github
+License: Apache-2.0
+-->
